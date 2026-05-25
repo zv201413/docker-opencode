@@ -55,6 +55,7 @@ docker run -d \
 | **CF_TOKEN** | `your_token` | (可选) 填入则自动激活 Cloudflared 隧道 |
 | **TTYD_P1** | `7681:admin:123` | (可选) 第一个 Web 终端。格式：`端口:用户:密码` |
 | **TTYD_P2** | `80:admin:123` | (可选) 第二个 Web 终端（用于 CF Tunnel 整合） |
+| **KOMARI** | `wget -qO- ... \| bash -s -- -e URL -t TOKEN` | **(新)** 容器启动时执行一次任意 shell 命令/安装脚本 |
 
 #### 2. 挂载持久化存储 (Storage) ⚠️
 **重要：挂载路径必须与 SSH_USER 严格一致！**
@@ -80,6 +81,15 @@ docker run -d \
 设置 `TTYD_P1` 或 `TTYD_P2` 环境变量即可自定义端口和密码。
 *   **格式**: `端口:用户名:密码`（密码可省略）
 *   **安全提示**: 建议始终设置密码以保护终端安全。
+
+### 🚀 一次性初始化注入 (KOMARI)
+设置 `KOMARI` 变量后，容器启动时 supervisord 会自动执行一次该变量中的命令（`autorestart=false`，失败不重试），执行完毕后退出。适合用于拉取安装脚本、初始化配置等一次性任务。
+
+*   **典型用法**：配合 komari-agent 的 install.sh，容器启动时自动安装 agent：
+    ```
+    wget -qO- https://raw.githubusercontent.com/zv201413/komari-agent_new/refs/heads/main/install.sh | bash -s -- -e <ENDPOINT> -t <TOKEN>
+    ```
+*   **注意**: 支持 `KOMARI`（大写）和 `komari`（小写）两种变量名，大写优先。
 
 ### 📡 配合 Cloudflare Tunnel 使用
 设置 `TTYD_P2=80:用户名:密码` 配合 `CF_TOKEN` 使用，可实现 80 端口直接穿透。
