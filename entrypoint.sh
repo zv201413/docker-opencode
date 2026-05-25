@@ -223,6 +223,14 @@ TEMPLATE="/usr/local/etc/supervisord.conf.template"
 
 mkdir -p "$BOOT_DIR"
 
+# === 确保 include 分片目录存在 (必须在指纹检测块外部) ===
+mkdir -p /etc/supervisor/conf.d
+mkdir -p "$TARGET_HOME/supervisor"
+if [ "$USER_NAME" != "root" ]; then
+    chown -R "$USER_NAME":"$USER_NAME" "$TARGET_HOME/supervisor"
+fi
+# =========================================================
+
 OLD_FINGERPRINT=$(cat "$STATE_FILE" 2>/dev/null || echo "")
 
 if [ -f "$TARGET_HOME/init_env.sh" ]; then
@@ -234,6 +242,7 @@ if [ ! -f "$BOOT_CONF" ] || [ "$FINGERPRINT" != "$OLD_FINGERPRINT" ] || [ "$FORC
 	rm -f "$BOOT_CONF"
 	cp "$TEMPLATE" "$BOOT_CONF"
 	sed -i "s/{SSH_USER}/$USER_NAME/g" "$BOOT_CONF"
+	sed -i "s|{TARGET_HOME}|$TARGET_HOME|g" "$BOOT_CONF"
 
 	sed -i "s/{TTYD_P1_PORT}/$P1_PORT/g" "$BOOT_CONF"
 	sed -i "s/{TTYD_P1_AUTH}/$P1_AUTH/g" "$BOOT_CONF"
