@@ -229,6 +229,8 @@ mkdir -p "$TARGET_HOME/supervisor"
 if [ "$USER_NAME" != "root" ]; then
     chown -R "$USER_NAME":"$USER_NAME" "$TARGET_HOME/supervisor"
 fi
+SYS_CONF_DIR="$BOOT_DIR/system.conf.d"
+mkdir -p "$SYS_CONF_DIR"
 # =========================================================
 
 OLD_FINGERPRINT=$(cat "$STATE_FILE" 2>/dev/null || echo "")
@@ -244,27 +246,29 @@ if [ ! -f "$BOOT_CONF" ] || [ "$FINGERPRINT" != "$OLD_FINGERPRINT" ] || [ "$FORC
 	sed -i "s/{SSH_USER}/$USER_NAME/g" "$BOOT_CONF"
 	sed -i "s|{TARGET_HOME}|$TARGET_HOME|g" "$BOOT_CONF"
 
-	sed -i "s/{TTYD_P1_PORT}/$P1_PORT/g" "$BOOT_CONF"
-	sed -i "s/{TTYD_P1_AUTH}/$P1_AUTH/g" "$BOOT_CONF"
+	# 清空上一次动态生成的系统片段，防止配置残留
+	rm -f "$SYS_CONF_DIR"/*.conf
+	
+	# 核心系统服务：直接拷贝
+	cp /usr/local/etc/fragments/sshd.conf "$SYS_CONF_DIR/"
+	
+	# ttyd 基础服务：拷贝并替换占位符
+	cp /usr/local/etc/fragments/ttyd.conf "$SYS_CONF_DIR/"
+	sed -i "s/{TTYD_P1_PORT}/$P1_PORT/g" "$SYS_CONF_DIR/ttyd.conf"
+	sed -i "s/{TTYD_P1_AUTH}/$P1_AUTH/g" "$SYS_CONF_DIR/ttyd.conf"
 
 	if [ -n "$P2_PORT" ]; then
-		sed -i 's/^autostart=false/autostart=true/' "$BOOT_CONF"
-		sed -i "s/{TTYD_P2_PORT}/$P2_PORT/g" "$BOOT_CONF"
-		sed -i "s/{TTYD_P2_AUTH}/$P2_AUTH/g" "$BOOT_CONF"
-	else
-		sed -i '/\[program:ttyd2\]/,/autostart/s/^/;/' "$BOOT_CONF"
+		cp /usr/local/etc/fragments/ttyd2.conf "$SYS_CONF_DIR/"
+		sed -i "s/{TTYD_P2_PORT}/$P2_PORT/g" "$SYS_CONF_DIR/ttyd2.conf"
+		sed -i "s/{TTYD_P2_AUTH}/$P2_AUTH/g" "$SYS_CONF_DIR/ttyd2.conf"
 	fi
 
-	if [ -z "$CF_TOKEN" ]; then
-		sed -i '/\[program:cloudflared\]/,/stdout_logfile/s/^/;/' "$BOOT_CONF"
-	else
-		sed -i '/\[program:cloudflared\]/,/stdout_logfile/s/^;//' "$BOOT_CONF"
+	if [ -n "$CF_TOKEN" ]; then
+		cp /usr/local/etc/fragments/cloudflared.conf "$SYS_CONF_DIR/"
 	fi
 
-	if [ -z "$KPAL" ]; then
-		sed -i '/\[program:kpal\]/,/stderr_logfile/s/^/;/' "$BOOT_CONF"
-	else
-		sed -i '/\[program:kpal\]/,/autostart/s/autostart=false/autostart=true/' "$BOOT_CONF"
+	if [ -n "$KPAL" ]; then
+		cp /usr/local/etc/fragments/kpal.conf "$SYS_CONF_DIR/"
 	fi
 
 	echo "$FINGERPRINT" > "$STATE_FILE"

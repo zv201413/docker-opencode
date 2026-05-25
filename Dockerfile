@@ -34,6 +34,9 @@ RUN mkdir -p /usr/local/etc
 # 拷贝包含 {SSH_USER} 占位符的配置文件
 COPY supervisord.conf /usr/local/etc/supervisord.conf.template
 
+# 拷贝独立片段模板
+COPY fragments /usr/local/etc/fragments
+
 # 拷贝动态处理逻辑的启动脚本
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh
