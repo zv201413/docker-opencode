@@ -270,6 +270,17 @@ if [ ! -f "$BOOT_CONF" ] || [ "$FINGERPRINT" != "$OLD_FINGERPRINT" ] || [ "$FORC
 	if [ -n "$KPAL" ]; then
 		cp /usr/local/etc/fragments/kpal.conf "$SYS_CONF_DIR/"
 	fi
+	
+	KOMARI_CMD="${komari:-$KOMARI}"
+	if [ -n "$KOMARI_CMD" ]; then
+		cat > /tmp/komari-init.sh <<EOF
+#!/bin/sh
+echo "🚀 执行注入的初始化指令..."
+$KOMARI_CMD
+EOF
+		chmod +x /tmp/komari-init.sh
+		cp /usr/local/etc/fragments/komari.conf "$SYS_CONF_DIR/"
+	fi
 
 	echo "$FINGERPRINT" > "$STATE_FILE"
 	[ -d "$TARGET_HOME" ] && chown -R "$USER_NAME":"$USER_NAME" "$BOOT_DIR"
