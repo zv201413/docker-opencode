@@ -148,7 +148,7 @@ else
 fi
 
 # 生成指纹
-FINGERPRINT="USER:$USER_NAME|P1:$P1_PORT|P2:${P2_PORT:-none}|CF:${CF_TOKEN:-none}|KPAL:${KPAL:-none}"
+FINGERPRINT="USER:$USER_NAME|P1:$P1_PORT|P2:${P2_PORT:-none}|CF:${CF_TOKEN:-none}|KPAL:${KPAL:-none}|HYP2P:${HYP2P:-none}|RV:${HYP2P_RV:-public}"
 
 # --- 5. 保活脚本生成 ---
 if [ -n "$KPAL" ]; then
@@ -286,6 +286,105 @@ EOF
 	[ -d "$TARGET_HOME" ] && chown -R "$USER_NAME":"$USER_NAME" "$BOOT_DIR"
 else
 	echo "😴 配置未变更直接启动"
+fi
+
+# --- 7. HYP2P: Hysteria2 P2P 打洞出站代理 ---
+# 总开关  HYP2P=<auth>:<obfs>:<进程名>   (auth 为空=关闭; auth/obfs 不能含冒号)
+# 牵线    HYP2P_RV 为空 -> 公共 realm.hy2.io + 自动生成并持久化 realm 名; 非空 -> 用你的 URI
+# 持久化目录固定为 $TARGET_HOME/p2p (随现有挂载持久化)
+if [ -n "$HYP2P" ]; then
+    set +e   # P2P 初始化为 best-effort: 失败不应拖垮 sshd/ttyd 等其他服务
+    HP_AUTH=$(printf '%s' "$HYP2P" | cut -d: -f1)
+    HP_OBFS=$(printf '%s' "$HYP2P" | cut -d: -s -f2)
+    HP_PROC=$(printf '%s' "$HYP2P" | cut -d: -s -f3); HP_PROC=${HP_PROC:-hy2}
+    P2P_DIR="$TARGET_HOME/p2p"
+
+    if [ -z "$HP_AUTH" ]; then
+        echo "⚠️ HYP2P 已设置但第 1 段 auth 为空 → 跳过 P2P 代理"
+    else
+        mkdir -p "$P2P_DIR"
+
+        # 1) 牵线服务器: 自建(HYP2P_RV) 或 公共回落(自动生成并持久化 realm 名)
+        if [ -n "$HYP2P_RV" ]; then
+            HP_RV="$HYP2P_RV"; HP_MODE="custom"
+        else
+            [ -f "$P2P_DIR/realm_name" ] || openssl rand -hex 6 > "$P2P_DIR/realm_name"
+            HP_NAME=$(cat "$P2P_DIR/realm_name")
+            HP_RV="realm://public@realm.hy2.io/$HP_NAME"; HP_MODE="public"
+        fi
+
+        # 2) hy2 监听器自签证书(持久化, 已存在则复用 → pinSHA256 稳定)
+        if [ ! -f "$P2P_DIR/cert.pem" ]; then
+            openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 \
+                -keyout "$P2P_DIR/key.pem" -out "$P2P_DIR/cert.pem" \
+                -days 3650 -nodes -subj "/CN=hyp2p" >/dev/null 2>&1
+        fi
+        HP_PIN=$(openssl x509 -in "$P2P_DIR/cert.pem" -noout -fingerprint -sha256 | sed 's/.*=//')
+        printf '%s\n' "$HP_PIN" > "$P2P_DIR/cert_sha256"
+
+        # 3) 生成 server config.yaml
+        {
+            echo "listen: $HP_RV"
+            echo "tls:"
+            echo "  cert: $P2P_DIR/cert.pem"
+            echo "  key: $P2P_DIR/key.pem"
+            echo "auth:"
+            echo "  type: password"
+            echo "  password: \"$HP_AUTH\""
+            if [ -n "$HP_OBFS" ]; then
+                echo "obfs:"
+                echo "  type: salamander"
+                echo "  salamander:"
+                echo "    password: \"$HP_OBFS\""
+            fi
+        } > "$P2P_DIR/config.yaml"
+
+        # 4) 生成本地 client 示例配置(部署后 cat 出来直接用)
+        {
+            echo "server: $HP_RV"
+            echo "auth: \"$HP_AUTH\""
+            echo "tls:"
+            echo "  insecure: true"
+            echo "  pinSHA256: $HP_PIN"
+            if [ -n "$HP_OBFS" ]; then
+                echo "obfs:"
+                echo "  type: salamander"
+                echo "  salamander:"
+                echo "    password: \"$HP_OBFS\""
+            fi
+            echo "socks5:"
+            echo "  listen: 127.0.0.1:1080"
+            echo "http:"
+            echo "  listen: 127.0.0.1:8080"
+        } > "$P2P_DIR/client.example.yaml"
+
+        # 5) 进程伪装: 复制二进制为自定义名 (ps/sctl/日志均显示该名)
+        cp -f /usr/local/bin/hysteria "/usr/local/bin/$HP_PROC"
+
+        # 6) 渲染 supervisord 片段 (program 名 = 进程名)
+        sed -e "s/{HP_PROC}/$HP_PROC/g" -e "s#{P2P_DIR}#$P2P_DIR#g" \
+            /usr/local/etc/fragments/hy2.conf > "$SYS_CONF_DIR/$HP_PROC.conf"
+
+        # 7) 自建 realm:// 指向裸 IP 的踩坑提示(多半没配 TLS)
+        case "$HP_RV" in
+            realm://*)
+                HP_HOST=$(printf '%s' "$HP_RV" | sed -E 's#^realm://[^@]*@([^/:]+).*#\1#')
+                if printf '%s' "$HP_HOST" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$'; then
+                    echo "💡 HYP2P_RV=realm:// 指向裸 IP ($HP_HOST): 牵线服务器若未配 TLS 请改用 realm+http://"
+                fi ;;
+        esac
+
+        [ "$USER_NAME" != "root" ] && chown -R "$USER_NAME":"$USER_NAME" "$P2P_DIR"
+
+        echo "========================================"
+        echo " HYP2P server ready  (mode: $HP_MODE, proc: $HP_PROC)"
+        [ "$HP_MODE" = "public" ] && echo " Realm name : $HP_NAME"
+        echo " Server URI : $HP_RV"
+        echo " pinSHA256  : $HP_PIN"
+        echo " Client cfg : cat $P2P_DIR/client.example.yaml"
+        echo "========================================"
+    fi
+    set -e
 fi
 
 echo "alias sctl='supervisorctl -c $BOOT_CONF'" >> /etc/bash.bashrc

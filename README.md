@@ -56,6 +56,8 @@ docker run -d \
 | **TTYD_P1** | `7681:admin:123` | (可选) 第一个 Web 终端。格式：`端口:用户:密码` |
 | **TTYD_P2** | `80:admin:123` | (可选) 第二个 Web 终端（用于 CF Tunnel 整合） |
 | **KOMARI** | `wget -qO- ... \| bash -s -- -e URL -t TOKEN` | **(新)** 容器启动时执行一次任意 shell 命令/安装脚本 |
+| **HYP2P** | `auth:obfs:进程名` | **(新)** P2P 打洞 hy2 出站代理总开关。格式 `认证密码:混淆密码:进程伪装名`（auth 空=关；密码**不能含冒号**） |
+| **HYP2P_RV** | (留空) | (可选) 牵线服务器 URI；**留空自动用公共 `realm.hy2.io`** |
 
 #### 2. 挂载持久化存储 (Storage) ⚠️
 **重要：挂载路径必须与 SSH_USER 严格一致！**
@@ -94,6 +96,47 @@ docker run -d \
 ### 📡 配合 Cloudflare Tunnel 使用
 设置 `TTYD_P2=80:用户名:密码` 配合 `CF_TOKEN` 使用，可实现 80 端口直接穿透。
 *   **CF 控制台配置**：Public Hostname 选 `HTTP`，URL 填 `localhost:80`。
+
+### 🌐 P2P 打洞 hy2 出站代理 (HYP2P)
+
+让容器在 NAT 后（无需公网入站端口）通过 **UDP 打洞**变成一个 **Hysteria2 出站代理落地**：你在本地用 hy2 客户端经 P2P 直连进来，流量从容器 IP 出站，全程带 Salamander 混淆。适合 Koyeb / Render / Zeabur 等开不了入站端口的平台。
+
+**只需两个变量：**
+
+| 变量 | 必填 | 说明 |
+| :--- | :--- | :--- |
+| `HYP2P` | ✅ | 总开关，格式 `<认证密码>:<混淆密码>:<进程伪装名>`。第 1 段 auth 留空=关闭；第 2 段 obfs 可空（空则不混淆）；第 3 段进程名可空（默认 `hy2`，可设 `nginx` 等规避按进程名检测） |
+| `HYP2P_RV` | ❌ | 牵线（rendezvous）服务器 URI。**留空 → 自动用官方公共 `realm.hy2.io`**；填则用你自建的 |
+
+> ⚠️ **密码不能含冒号 `:`** —— `HYP2P` 用冒号分三段，auth / obfs 含 `:` 会解析错位。密码请只用字母数字和 `-`（例：`koyeb-udp-p2p123`）。
+
+#### ① 零配置（公共牵线）
+只设 `HYP2P=你的密码:混淆密码:nginx`，不填 `HYP2P_RV`。容器自动用公共 `realm.hy2.io` 并**生成随机 realm 名**（持久化，重启不变）。部署后在 SSH / Web 终端里拿连接信息（`/home/zv` 换成你的 `SSH_USER` 家目录）：
+
+```bash
+cat /home/zv/p2p/client.example.yaml   # 一份填好的本地 client 配置，直接用
+cat /home/zv/p2p/realm_name            # 仅 realm 名
+cat /home/zv/p2p/cert_sha256           # 证书指纹 (pinSHA256)
+```
+启动日志也会打印含 realm 名 / Server URI / pinSHA256 的横幅。
+
+#### ② 本地客户端怎么连（自签证书）
+容器作为 hy2 server 用**自签证书**，指纹是容器内现生成的、事先不知道。`client.example.yaml` 已自动填好 `tls.insecure: true` + `tls.pinSHA256`（锁死指纹防 MITM）。把它拿到本地当 `client.yaml`，用官方 hysteria 客户端启动即可：本地 SOCKS5 `127.0.0.1:1080`、HTTP `127.0.0.1:8080`。
+
+#### ③ 自建牵线服务器
+在一台**公网机器**上跑 [hysteria-realm-server](https://github.com/apernet/hysteria-realm-server)，把 `HYP2P_RV` 填成它的 URI：
+```bash
+git clone https://github.com/apernet/hysteria-realm-server.git && cd hysteria-realm-server
+docker build -t hy-realm .
+docker run -d --name hy-realm --restart unless-stopped -p 8443:8443 \
+  -e HYSTERIA_REALM_TOKEN="你的token" -e HYSTERIA_REALM_LISTEN=":8443" hy-realm
+# 放行防火墙 TCP 8443
+```
+> ⚠️ **`realm://` 还是 `realm+http://`？必看**：上面这样跑**没配 TLS**，`HYP2P_RV` 必须用 **`realm+http://你的token@IP:8443/名字`**；用 `realm://`（HTTPS）会握手失败！只有给牵线服务器配了 TLS（域名+证书或 Caddy 反代自动签）才用 `realm://`。公共 `realm.hy2.io` 是 HTTPS，故用 `realm://`（留空即自动）。
+
+#### ⚠️ 两个前提
+*   **持久化**：realm 名与证书指纹存在 `$HOME/p2p`。**Koyeb 等无持久盘平台**重启会重新生成 → 本地 client 需重抄。想稳定就挂持久卷，或显式设 `HYP2P_RV`（固定 realm 名）+ 本地只用 `insecure: true`（不 pin 指纹）。
+*   **NAT 类型**：UDP 打洞有硬限制 —— 只要**一端对称 NAT（随机端口）**且另一端非公网IP/全锥型，就**打不通**。公共 `realm.hy2.io` 为免费 best-effort，可能宕机/被墙。
 
 ---
 

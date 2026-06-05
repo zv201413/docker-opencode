@@ -8,7 +8,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
 
 # 2. 安装必要软件包
 RUN apt-get update && apt-get install -y \
-    openssh-server supervisor curl wget sudo ca-certificates \
+    openssh-server supervisor curl wget sudo ca-certificates openssl \
     tzdata vim net-tools unzip iputils-ping telnet git iproute2 \
     && rm -rf /var/lib/apt/lists/*
 
@@ -20,6 +20,11 @@ RUN curl -L --output cloudflared.deb https://github.com/cloudflare/cloudflared/r
     && chmod +x /usr/local/bin/ttyd \
     && curl -L https://github.com/aptible/supercronic/releases/download/v0.2.44/supercronic-linux-amd64 -o /usr/local/bin/sc \
     && chmod +x /usr/local/bin/sc
+
+# 3b. 安装 hysteria 主程序 (P2P/Realm 出站代理, 需 >= app/v2.9.0)
+RUN curl -L https://github.com/apernet/hysteria/releases/download/app/v2.9.2/hysteria-linux-amd64 \
+        -o /usr/local/bin/hysteria \
+    && chmod +x /usr/local/bin/hysteria
 
 # 4. SSH 环境预处理
 RUN mkdir -p /run/sshd && ssh-keygen -A \
