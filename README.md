@@ -1,130 +1,196 @@
-# 🚀 ZVPS-Super 2026 增强版
+# ZVPS-Super
 
-基于 **Ubuntu** 的智能型容器基础镜像。支持通过环境变量动态接管启动进程，结合 **Supervisor** 实现多服务保活、**全自动配置初始化**与持久化存储。
+> 基于 **Ubuntu 22.04** 的「环境变量驱动」多服务容器镜像。
+> 设好变量 → 服务自动拉起、配置自动生成、数据自动持久化，由 **Supervisor** 统一保活。
+
+专为 **免费容器平台**（Koyeb / Railway / Render / Zeabur / HuggingFace Spaces 等，无 Docker 访问权、常无公网入站端口）以及**自建 Docker / VPS** 设计。一个镜像同时提供：SSH、Web 终端、Cloudflare 隧道、循环保活、流量统计、一次性安装注入，以及 **P2P 打洞的 Hysteria2 出站代理**。
 
 ---
 
-## 🛠️ 部署方式 (Deployment Methods)
+## 📦 镜像地址
 
-你可以根据使用环境选择以下两种并列的部署方式：
-
-### A. 🐳 Docker 命令行部署 (Docker CLI)
-适用于本地服务器或具有 Docker 访问权限的 VPS。
-
-#### 1. ⚡ 极简启动 (仅 SSH + Web 终端)
-```bash
-docker run -d \
-  --name zvps-super \
-  -e SSH_PWD="your_password" \
-  -p 2222:22 \
-  -p 7681:7681 \
-  zv201413/zvps-super
+```
+ghcr.io/zv201413/zvps:latest
 ```
 
-#### 2. 🚀 全功能启动 (持久化 + 隧道 + 保活)
+> CI 每次推送自动构建并发布到 GHCR（见 [构建与发布](#-构建与发布)）。
+
+---
+
+## ⚡ 60 秒上手
+
+### 最小启动（SSH + Web 终端）
+
 ```bash
-docker run -d \
-  --name zvps-super \
+docker run -d --name zvps \
+  -e SSH_PWD="改成你的密码" \
+  -p 2222:22 -p 7681:7681 \
+  ghcr.io/zv201413/zvps:latest
+```
+
+- SSH：`ssh zv@<host> -p 2222`（默认用户 `zv`）
+- Web 终端：`http://<host>:7681`
+
+### 全功能启动（持久化 + 隧道 + 保活 + 流量）
+
+```bash
+docker run -d --name zvps \
   -e SSH_USER="zv" \
-  -e SSH_PWD="your_password" \
+  -e SSH_PWD="改成你的密码" \
   -e GB=true \
-  -e KPAL="240+60:https://your-monitor-url" \
-  -e CF_TOKEN="your_cloudflare_token" \
-  -e TTYD_P1="7681:admin:your_password" \
+  -e KPAL="300:60:https://你的监控地址" \
+  -e CF_TOKEN="你的 cloudflare token" \
+  -e TTYD_P1="7681:admin:终端密码" \
   -v /opt/zvps_data:/home/zv \
-  -p 2222:22 \
-  -p 7681:7681 \
+  -p 2222:22 -p 7681:7681 \
   --restart unless-stopped \
-  zv201413/zvps-super
+  ghcr.io/zv201413/zvps:latest
 ```
 
+> 平台面板部署（Koyeb/Railway 等）：把上面的 `-e KEY="value"` 逐条填进环境变量面板即可，端口和持久卷按平台方式配置。
+
 ---
 
-### B. ☁️ 容器平台环境变量部署 (Cloud Platforms)
-适用于 Zeabur, Railway, Render 等无直接 Docker 访问权限的平台。
+## 🧩 服务一览
 
-#### 1. 一站式环境配置
-在平台面板添加以下环境变量：
+| 服务 | 作用 | 由谁开启 | 默认 | 端口 |
+| :--- | :--- | :--- | :---: | :---: |
+| **sshd** | SSH 登录 | 始终开启 | ✅ ON | `22` |
+| **ttyd** | 浏览器 Web 终端 | 始终开启（可配置） | ✅ ON | `7681` |
+| **ttyd2** | 第二个 Web 终端 | `TTYD_P2` | ⬜ OFF | 自定义 |
+| **cloudflared** | Cloudflare 隧道（免公网 IP 暴露服务） | `CF_TOKEN` | ⬜ OFF | 出站 |
+| **kpal** | 循环 HTTP 保活（防平台休眠） | `KPAL` | ⬜ OFF | — |
+| **komari** | 启动时执行一次任意命令 / 安装脚本 | `KOMARI` | ⬜ OFF | — |
+| **hy2 (HYP2P)** | P2P 打洞的 Hysteria2 出站代理落地 | `HYP2P` | ⬜ OFF | 无入站（打洞） |
 
-| 变量名 | 示例值 | 说明 |
+镜像 `EXPOSE 22 7681`；其余服务要么走出站隧道/打洞（无需入站端口），要么按你设的端口自行映射。
+
+---
+
+## 🔧 环境变量速查
+
+### 核心 / SSH
+
+| 变量 | 默认 | 说明 |
 | :--- | :--- | :--- |
-| **SSH_USER** | `zv` | SSH 用户名（默认获得最高权限） |
-| **SSH_PWD** | `105106` | SSH 登录密码 |
-| **KPAL** | `300:60:URL` | **(新)** 循环保活配置。格式：`范围:偏移:URL` |
-| **GB** | `true` | (可选) 开启后自动安装 vnstat 流量统计 |
-| **CF_TOKEN** | `your_token` | (可选) 填入则自动激活 Cloudflared 隧道 |
-| **TTYD_P1** | `7681:admin:123` | (可选) 第一个 Web 终端。格式：`端口:用户:密码` |
-| **TTYD_P2** | `80:admin:123` | (可选) 第二个 Web 终端（用于 CF Tunnel 整合） |
-| **KOMARI** | `wget -qO- ... \| bash -s -- -e URL -t TOKEN` | **(新)** 容器启动时执行一次任意 shell 命令/安装脚本 |
-| **HYP2P** | `auth:obfs:进程名` | **(新)** P2P 打洞 hy2 出站代理总开关。格式 `认证密码:混淆密码:进程伪装名`（auth 空=关；密码**不能含冒号**） |
-| **HYP2P_RV** | (留空) | (可选) 牵线服务器 URI；**留空自动用公共 `realm.hy2.io`** |
+| `SSH_USER` | `zv` | SSH 用户名，**同时决定持久化家目录**（见 [持久化](#-持久化)）。设为 `root` 走 root 模式 |
+| `SSH_PWD` | `105106` | SSH 登录密码 ⚠️ **务必改掉默认值** |
 
-#### 2. 挂载持久化存储 (Storage) ⚠️
-**重要：挂载路径必须与 SSH_USER 严格一致！**
-- 若 `SSH_USER` = `root`：挂载到 `/root`
-- 若 `SSH_USER` = `zv`：挂载到 `/home/zv`
+### 保活 · KPAL
 
----
+| 变量 | 默认 | 说明 |
+| :--- | :--- | :--- |
+| `KPAL` | （关） | 循环保活，格式 `范围:偏移:URL`。每轮随机等待 `RANDOM % 范围 + 偏移` 秒再请求一次 |
 
-## 📝 参数详解与进阶配置
+格式可缺省：`300::URL`（偏移默认 60）、`:60:URL`（范围默认 300）、`URL`（范围 300 / 偏移 60）。
 
-### 📡 智能保活机制 (KPAL)
-本项目集成了基于持久化循环脚本的动态保活功能（服务名：`kpal`）。
+### 流量统计 · GB
 
-*   **变量格式**：`KPAL=范围:偏移:URL`
-*   **示例**：`KPAL=300:60:https://example.com/status`
-*   **缺省支持**：
-    *   `300::URL` (偏移默认 60)
-    *   `:60:URL` (范围默认 300)
-    *   `URL` (范围默认 300，偏移默认 60)
-*   **逻辑**：采用 `while true` 持久化循环，每次请求前随机等待 `RANDOM % 范围 + 偏移` 秒。
+| 变量 | 默认 | 说明 |
+| :--- | :--- | :--- |
+| `GB` | （关） | 设任意非空值即开启：自动装 `vnstat`、把数据库软链到持久目录、注入 `gb` 快捷命令 |
 
-### 📡 自定义 Web 终端 (ttyd)
-设置 `TTYD_P1` 或 `TTYD_P2` 环境变量即可自定义端口和密码。
-*   **格式**: `端口:用户名:密码`（密码可省略）
-*   **安全提示**: 建议始终设置密码以保护终端安全。
+开启后在终端输入 `gb` 查看 eth0 的 RX/TX（MB + GB 双显）。
 
-### 🚀 一次性初始化注入 (KOMARI)
-设置 `KOMARI` 变量后，容器启动时 supervisord 会自动执行一次该变量中的命令（`autorestart=false`，失败不重试），执行完毕后退出。适合用于拉取安装脚本、初始化配置等一次性任务。
+### Cloudflare 隧道 · CF_TOKEN
 
-*   **典型用法**：配合 komari-agent 的 install.sh，容器启动时自动安装 agent：
-    ```
-    wget -qO- https://raw.githubusercontent.com/zv201413/komari-agent_new/refs/heads/main/install.sh | bash -s -- -e <ENDPOINT> -t <TOKEN>
-    ```
-*   **注意**: 支持 `KOMARI`（大写）和 `komari`（小写）两种变量名，大写优先。
+| 变量 | 默认 | 说明 |
+| :--- | :--- | :--- |
+| `CF_TOKEN` | （关） | 填入 Cloudflare Tunnel token 即自动激活 `cloudflared`，无需暴露公网端口 |
 
-### 📡 配合 Cloudflare Tunnel 使用
-设置 `TTYD_P2=80:用户名:密码` 配合 `CF_TOKEN` 使用，可实现 80 端口直接穿透。
-*   **CF 控制台配置**：Public Hostname 选 `HTTP`，URL 填 `localhost:80`。
+配合 `TTYD_P2=80:用户:密码` 可把 Web 终端经隧道发布到 80 端口（CF 控制台 Public Hostname 选 `HTTP`、URL 填 `localhost:80`）。
 
-### 🌐 P2P 打洞 hy2 出站代理 (HYP2P)
+### Web 终端 · TTYD
 
-让容器在 NAT 后（无需公网入站端口）通过 **UDP 打洞**变成一个 **Hysteria2 出站代理落地**：你在本地用 hy2 客户端经 P2P 直连进来，流量从容器 IP 出站，全程带 Salamander 混淆。适合 Koyeb / Render / Zeabur 等开不了入站端口的平台。
+| 变量 | 默认 | 说明 |
+| :--- | :--- | :--- |
+| `TTYD_P1` | `7681`（无密码） | 第一个 Web 终端，格式 `端口:用户名:密码`（用户/密码可省略） |
+| `TTYD_P2` | （关） | 第二个 Web 终端，格式同上（常用于配合 CF 隧道） |
+| `TTYD` / `TTYD_PORT` | — | 旧变量，向后兼容；`TTYD_P1` 未设时回退使用 |
 
-**只需两个变量：**
+> 🔒 建议始终给终端设密码：`TTYD_P1=7681:admin:你的密码`。
+
+### 一次性注入 · KOMARI
+
+| 变量 | 默认 | 说明 |
+| :--- | :--- | :--- |
+| `KOMARI`（或小写 `komari`，大写优先） | （关） | 容器启动时由 supervisor 执行一次该命令（`autorestart=false`，失败不重试），完成即退出 |
+
+典型用途：拉起监控 agent 安装脚本。
+
+```
+KOMARI=wget -qO- https://raw.githubusercontent.com/zv201413/komari-agent_new/refs/heads/main/install.sh | bash -s -- -e <ENDPOINT> -t <TOKEN>
+```
+
+### P2P 出站代理 · HYP2P
 
 | 变量 | 必填 | 说明 |
+| :--- | :---: | :--- |
+| `HYP2P` | ✅ | 总开关，格式 `<认证密码>:<混淆密码>:<进程伪装名>`。auth 留空=关闭；obfs 可空（不混淆）；进程名可空（默认 `hy2`，可设 `nginx` 等规避按进程名检测） |
+| `HYP2P_RV` | ❌ | 牵线（rendezvous）服务器 URI。**留空 → 自动用官方公共 `realm.hy2.io`**；填则用自建 |
+
+> ⚠️ **密码不能含冒号 `:`**（`HYP2P` 用冒号分三段）。请只用字母数字和 `-`，如 `koyeb-udp-p2p123`。
+
+详见 [P2P 出站代理详解](#-p2p-出站代理-hyp2p-详解)。
+
+### 维护 · FORCE_UPDATE
+
+| 变量 | 默认 | 说明 |
 | :--- | :--- | :--- |
-| `HYP2P` | ✅ | 总开关，格式 `<认证密码>:<混淆密码>:<进程伪装名>`。第 1 段 auth 留空=关闭；第 2 段 obfs 可空（空则不混淆）；第 3 段进程名可空（默认 `hy2`，可设 `nginx` 等规避按进程名检测） |
-| `HYP2P_RV` | ❌ | 牵线（rendezvous）服务器 URI。**留空 → 自动用官方公共 `realm.hy2.io`**；填则用你自建的 |
+| `FORCE_UPDATE` | （关） | 设为 `true` 强制在下次启动时重建服务配置（平时变量未变不会重建，靠指纹比对自动触发） |
 
-> ⚠️ **密码不能含冒号 `:`** —— `HYP2P` 用冒号分三段，auth / obfs 含 `:` 会解析错位。密码请只用字母数字和 `-`（例：`koyeb-udp-p2p`）。
+---
 
-#### ① 零配置（公共牵线）
-只设 `HYP2P=你的密码:混淆密码:nginx`，不填 `HYP2P_RV`。容器自动用公共 `realm.hy2.io` 并**生成随机 realm 名**（持久化，重启不变）。部署后在 SSH / Web 终端里拿连接信息（`/home/zv` 换成你的 `SSH_USER` 家目录）：
+## 💾 持久化
+
+容器的可写状态都落在 **`TARGET_HOME`** 下，**它由 `SSH_USER` 决定**：
+
+| `SSH_USER` | `TARGET_HOME` | 挂载卷要挂到 |
+| :--- | :--- | :--- |
+| `zv`（默认） | `/home/zv` | `/home/zv` |
+| 自定义 `foo` | `/home/foo` | `/home/foo` |
+| `root` | `/root` | `/root` |
+
+> ⚠️ **挂载路径必须与 `SSH_USER` 一致**，否则数据不落到持久卷。
+
+`TARGET_HOME` 下会生成 / 持久化：
+
+| 路径 | 内容 |
+| :--- | :--- |
+| `init_env.sh` | 流量统计初始化脚本（开 `GB` 时生成） |
+| `boot/` | 自动生成的 supervisor 服务配置 |
+| `supervisor/` | 你自己的服务配置投放目录（`*.conf`） |
+| `p2p/` | HYP2P 的 `realm_name`、`cert_sha256`、`client.example.yaml` |
+| `vnstat_data/` | vnstat 流量数据库（软链） |
+
+无持久卷的平台（如 Koyeb）重启后这些会重新生成——对 HYP2P 影响见下。
+
+---
+
+## 🌐 P2P 出站代理 (HYP2P) 详解
+
+让容器在 NAT 后（**无需公网入站端口**）通过 **UDP 打洞**变成一个 **Hysteria2 出站代理落地**：你在本地用 hy2 客户端经 P2P 直连进来，流量从容器 IP 出站，全程带 Salamander 混淆。适合 Koyeb / Render / Zeabur 等开不了入站端口的平台。
+
+### ① 零配置（公共牵线）
+
+只设 `HYP2P=认证密码:混淆密码:nginx`，不填 `HYP2P_RV`。容器自动用公共 `realm.hy2.io` 并**生成随机 realm 名**（持久化，重启不变）。部署后在 SSH / Web 终端里拿连接信息（路径中的 `/home/zv` 换成你的 `SSH_USER` 家目录）：
 
 ```bash
 cat /home/zv/p2p/client.example.yaml   # 一份填好的本地 client 配置，直接用
 cat /home/zv/p2p/realm_name            # 仅 realm 名
 cat /home/zv/p2p/cert_sha256           # 证书指纹 (pinSHA256)
 ```
+
 启动日志也会打印含 realm 名 / Server URI / pinSHA256 的横幅。
 
-#### ② 本地客户端怎么连（自签证书）
-容器作为 hy2 server 用**自签证书**，指纹是容器内现生成的、事先不知道。`client.example.yaml` 已自动填好 `tls.insecure: true` + `tls.pinSHA256`（锁死指纹防 MITM）。把它拿到本地当 `client.yaml`，用官方 hysteria 客户端启动即可：本地 SOCKS5 `127.0.0.1:1080`、HTTP `127.0.0.1:8080`。
+### ② 本地客户端怎么连（自签证书）
 
-#### ③ 自建牵线服务器
+容器作为 hy2 server 用**自签证书**，指纹是容器内现生成的、事先不知道。`client.example.yaml` 已自动填好 `tls.insecure: true` + `tls.pinSHA256`（锁死指纹防 MITM），并监听本地 **SOCKS5 `127.0.0.1:1080`**、**HTTP `127.0.0.1:8080`**。把它拿到本地当 `client.yaml`，用官方 hysteria 客户端启动即可。
+
+### ③ 自建牵线服务器
+
 在一台**公网机器**上跑 [hysteria-realm-server](https://github.com/apernet/hysteria-realm-server)，把 `HYP2P_RV` 填成它的 URI：
+
 ```bash
 git clone https://github.com/apernet/hysteria-realm-server.git && cd hysteria-realm-server
 docker build -t hy-realm .
@@ -132,33 +198,46 @@ docker run -d --name hy-realm --restart unless-stopped -p 8443:8443 \
   -e HYSTERIA_REALM_TOKEN="你的token" -e HYSTERIA_REALM_LISTEN=":8443" hy-realm
 # 放行防火墙 TCP 8443
 ```
-> ⚠️ **`realm://` 还是 `realm+http://`？必看**：上面这样跑**没配 TLS**，`HYP2P_RV` 必须用 **`realm+http://你的token@IP:8443/名字`**；用 `realm://`（HTTPS）会握手失败！只有给牵线服务器配了 TLS（域名+证书或 Caddy 反代自动签）才用 `realm://`。公共 `realm.hy2.io` 是 HTTPS，故用 `realm://`（留空即自动）。
 
-#### ⚠️ 两个前提
-*   **持久化**：realm 名与证书指纹存在 `$HOME/p2p`。**Koyeb 等无持久盘平台**重启会重新生成 → 本地 client 需重抄。想稳定就挂持久卷，或显式设 `HYP2P_RV`（固定 realm 名）+ 本地只用 `insecure: true`（不 pin 指纹）。
-*   **NAT 类型**：UDP 打洞有硬限制 —— 只要**一端对称 NAT（随机端口）**且另一端非公网IP/全锥型，就**打不通**。公共 `realm.hy2.io` 为免费 best-effort，可能宕机/被墙。
+> ⚠️ **`realm://` 还是 `realm+http://`？必看**：上面这样跑**没配 TLS**，`HYP2P_RV` 必须用 **`realm+http://你的token@IP:8443/名字`**；用 `realm://`（HTTPS）会握手失败！只有给牵线服务器配了 TLS（域名+证书 / Caddy 反代自动签）才用 `realm://`。公共 `realm.hy2.io` 是 HTTPS，故用 `realm://`（留空即自动）。
+
+### ⚠️ 两个硬前提
+
+- **持久化**：realm 名与证书指纹存在 `$TARGET_HOME/p2p`。**Koyeb 等无持久盘平台**重启会重新生成 → 本地 client 需重抄。想稳定就挂持久卷，或显式设 `HYP2P_RV`（固定 realm 名）+ 本地只用 `insecure: true`（不 pin 指纹）。
+- **NAT 类型**：UDP 打洞有硬限制 —— 只要**一端对称 NAT（随机端口）**且另一端非公网 IP/全锥型，就**可能打不通**。公共 `realm.hy2.io` 为免费 best-effort，可能宕机/被墙。若本地有 **IPv6**，强制客户端走 v6（只填 v6 STUN）可绕过 v4 CGNAT、显著提升成功率与稳定性。
 
 ---
 
 ## 🛠️ 运维与管理
 
-1.  **流量监控 `gb`**: 开启 `GB=true` 后，在终端输入 `gb` 即可查看双显流量统计。
-2.  **进程管理 `sctl`**: 内置 `sctl` (supervisorctl)，可随时查看或重启服务：
-    ```bash
-    sctl status        # 查看所有进程
-    sctl restart kpal  # 重启保活模块
-    ```
-3.  **配置持久化**: 镜像启动后会在挂载目录下生成 `init_env.sh` (初始化脚本) 和 `boot/supervisord.conf` (服务配置)。修改后执行 `sctl update` 即可。
+| 操作 | 命令 | 说明 |
+| :--- | :--- | :--- |
+| 查流量 | `gb` | 需先开 `GB=true`，显示 eth0 RX/TX（MB+GB） |
+| 看进程 | `sctl status` | `sctl` = 内置 supervisorctl |
+| 重启服务 | `sctl restart kpal` | 服务名见 `sctl status` |
+| 重载配置 | `sctl update` | 修改 `boot/` 或 `supervisor/*.conf` 后执行 |
+
+镜像启动后会在 `TARGET_HOME` 生成 `init_env.sh` 与 `boot/` 下的服务配置；改动后 `sctl update` 生效，或设 `FORCE_UPDATE=true` 重启重建。
 
 ---
 
-## 🏁 流程总结
-1. **选方法**：使用 Docker 命令行或平台环境变量面板。
-2. **设变量**：配置 SSH、KPAL、CF 等核心变量。
-3. **挂存储**：确保挂载路径与用户名一致。
-4. **收工**：部署成功后，使用 `gb` 查流量，使用 `sctl` 管进程。
+## 🏗️ 构建与发布
+
+- **基础镜像**：`ubuntu:22.04`
+- **进程管理**：Supervisor（基础配置 `supervisord.conf`，各服务配置由 `entrypoint.sh` 按环境变量动态生成并 `include`）
+- **CI**：`.github/workflows/build-image.yml`，推送即构建并发布到 GHCR：
+  - `ghcr.io/<owner>/zvps:latest`
+  - `ghcr.io/<owner>/zvps:<版本号>`
+
+本地自构建：
+
+```bash
+git clone https://github.com/zv201413/zvps-super.git && cd zvps-super
+docker build -t zvps:local .
+```
 
 ---
 
-**🤝 鸣谢**
-本项目参考了 `vevc/ubuntu` 的设计思路，并针对持久化挂载、流量统计、灵活保活机制进行了深度定制。
+## 🤝 鸣谢
+
+参考 `vevc/ubuntu` 的设计思路，针对持久化挂载、流量统计、灵活保活与 P2P 出站代理做了深度定制。
