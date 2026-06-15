@@ -201,6 +201,54 @@ docker run -d --name hy-realm --restart unless-stopped -p 8443:8443 \
 
 > ⚠️ **`realm://` 还是 `realm+http://`？必看**：上面这样跑**没配 TLS**，`HYP2P_RV` 必须用 **`realm+http://你的token@IP:8443/名字`**；用 `realm://`（HTTPS）会握手失败！只有给牵线服务器配了 TLS（域名+证书 / Caddy 反代自动签）才用 `realm://`。公共 `realm.hy2.io` 是 HTTPS，故用 `realm://`（留空即自动）。
 
+### ④ Windows 一键批处理
+
+容器部署后，SSH 进去拿连接信息，按以下步骤在本地创建一键启动脚本。
+
+**前提：** 将 [hysteria-windows-amd64.exe](https://github.com/apernet/hysteria/releases/latest/download/hysteria-windows-amd64.exe) 放到桌面 `hysteria\` 目录下。
+
+**第一步：在容器 SSH 终端获取信息**
+```bash
+cat /home/zv/p2p/client.example.yaml   # 查看完整客户端配置
+cat /home/zv/p2p/realm_name            # 只拿 realm 名
+cat /home/zv/p2p/cert_sha256           # 只拿证书指纹
+```
+
+**第二步：创建 `桌面\hy2-隧道.bat`，替换三行变量为你的值：**
+
+```batch
+@echo off
+title Hysteria2 P2P Tunnel
+
+:: 改下面三行为你容器的值
+set REALM=xxx       REM cat /home/zv/p2p/realm_name
+set AUTH=xxx        REM HYP2P 认证密码
+set PIN=xxx         REM cat /home/zv/p2p/cert_sha256
+
+taskkill /f /im hysteria.exe >nul 2>&1
+cd /d "%~dp0hysteria"
+
+(
+echo server: realm://public@realm.hy2.io/%REALM%
+echo auth: %AUTH%
+echo tls:
+echo   insecure: true
+echo   pinSHA256: %PIN%
+echo socks5:
+echo   listen: 127.0.0.1:25002
+) > tunnel.yaml
+
+echo Starting Hysteria2 P2P...
+start /b hysteria.exe client -c tunnel.yaml > tunnel.log 2>&1
+timeout /t 3 /nobreak >nul
+echo SOCKS5: 127.0.0.1:25002
+pause
+```
+
+**使用：** 双击运行 → 自动打洞建立 P2P 直连，浏览器/应用设 SOCKS5 `127.0.0.1:25002` 即可。再次双击同一脚本 = 停止隧道。
+
+> ⚠️ **无持久卷平台（Koyeb 等）重启后**，realm 名和证书指纹会重新生成，需重新 `cat` 并更新 bat 中的三行变量。
+
 ### ⚠️ 两个硬前提
 
 - **持久化**：realm 名与证书指纹存在 `$TARGET_HOME/p2p`。**Koyeb 等无持久盘平台**重启会重新生成 → 本地 client 需重抄。想稳定就挂持久卷，或显式设 `HYP2P_RV`（固定 realm 名）+ 本地只用 `insecure: true`（不 pin 指纹）。
