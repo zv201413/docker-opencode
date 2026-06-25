@@ -148,7 +148,7 @@ else
 fi
 
 # 生成指纹
-FINGERPRINT="USER:$USER_NAME|P1:$P1_PORT|P2:${P2_PORT:-none}|CF:${CF_TOKEN:-none}|KPAL:${KPAL:-none}|HYP2P:${HYP2P:-none}|RV:${HYP2P_RV:-public}"
+FINGERPRINT="USER:$USER_NAME|P1:$P1_PORT|P2:${P2_PORT:-none}|CF:${CF_TOKEN:-none}|KPAL:${KPAL:-none}|HYP2P:${HYP2P:-none}|RV:${HYP2P_RV:-public}|SBP2P:${SBP2P:-none}"
 
 # --- 5. 保活脚本生成 ---
 if [ -n "$KPAL" ]; then
@@ -317,7 +317,7 @@ if [ -n "$HYP2P" ]; then
         if [ ! -f "$P2P_DIR/cert.pem" ]; then
             openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 \
                 -keyout "$P2P_DIR/key.pem" -out "$P2P_DIR/cert.pem" \
-                -days 3650 -nodes -subj "/CN=hyp2p" >/dev/null 2>&1
+                -days 3650 -nodes -subj "/CN=cloudflare.com" >/dev/null 2>&1
         fi
         HP_PIN=$(openssl x509 -in "$P2P_DIR/cert.pem" -noout -fingerprint -sha256 | sed 's/.*=//')
         printf '%s\n' "$HP_PIN" > "$P2P_DIR/cert_sha256"
@@ -328,6 +328,8 @@ if [ -n "$HYP2P" ]; then
             echo "tls:"
             echo "  cert: $P2P_DIR/cert.pem"
             echo "  key: $P2P_DIR/key.pem"
+            echo "  alpn:"
+            echo "    - h3"
             echo "auth:"
             echo "  type: password"
             echo "  password: \"$HP_AUTH\""
@@ -346,6 +348,8 @@ if [ -n "$HYP2P" ]; then
             echo "tls:"
             echo "  insecure: true"
             echo "  pinSHA256: $HP_PIN"
+            echo "  alpn:"
+            echo "    - h3"
             if [ -n "$HP_OBFS" ]; then
                 echo "obfs:"
                 echo "  type: salamander"
@@ -382,6 +386,78 @@ if [ -n "$HYP2P" ]; then
         echo " Server URI : $HP_RV"
         echo " pinSHA256  : $HP_PIN"
         echo " Client cfg : cat $P2P_DIR/client.example.yaml"
+        echo "========================================"
+    fi
+    set -e
+fi
+
+# --- 8. SBP2P: Sing-box Hysteria2 P2P 打洞出站代理 ---
+# 格式: SBP2P=<auth>:<obfs>:<进程名>   (auth 为空=关闭, obfs 可空)
+# 牵线: SBP2P_RV 为空 -> 公共 realm.hy2.io + 自动生成 realm 名; 非空 -> 自定义 URI
+if [ -n "$SBP2P" ]; then
+    set +e
+    SB_AUTH=$(printf '%s' "$SBP2P" | cut -d: -f1)
+    SB_OBFS=$(printf '%s' "$SBP2P" | cut -d: -s -f2)
+    SB_PROC=$(printf '%s' "$SBP2P" | cut -d: -s -f3); SB_PROC=${SB_PROC:-sb}
+    P2P_DIR="$TARGET_HOME/p2p"
+    SB_PORT=8343
+
+    if [ -z "$SB_AUTH" ]; then
+        echo "⚠️ SBP2P 已设置但第 1 段 auth 为空 → 跳过"
+    else
+        mkdir -p "$P2P_DIR"
+
+        # 1) 牵线服务器
+        if [ -n "$SBP2P_RV" ]; then
+            SB_RV="$SBP2P_RV"; SB_MODE="custom"
+        else
+            [ -f "$P2P_DIR/sb_realm_name" ] || openssl rand -hex 6 > "$P2P_DIR/sb_realm_name"
+            SB_NAME=$(cat "$P2P_DIR/sb_realm_name")
+            SB_RV="https://realm.hy2.io"; SB_MODE="public"
+        fi
+
+        # 2) TLS 证书 (复用或生成)
+        if [ ! -f "$P2P_DIR/cert.pem" ]; then
+            openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 \
+                -keyout "$P2P_DIR/key.pem" -out "$P2P_DIR/cert.pem" \
+                -days 3650 -nodes -subj "/CN=cloudflare.com" >/dev/null 2>&1
+        fi
+        SB_PIN=$(openssl x509 -in "$P2P_DIR/cert.pem" -noout -fingerprint -sha256 | sed 's/.*=//')
+        printf '%s\n' "$SB_PIN" > "$P2P_DIR/sb_cert_sha256"
+
+        # 3) 生成 sing-box server JSON 配置
+        # 拆分为条件前/条件后两部分，obfs 可选中插
+        > "$P2P_DIR/sb-config.json"
+        printf '{"log":{"level":"error","timestamp":true},"inbounds":[{"type":"hysteria2","tag":"sb-hy2-in","listen":"0.0.0.0","listen_port":%s,"users":[{"password":"%s"}],' "$SB_PORT" "$SB_AUTH" >> "$P2P_DIR/sb-config.json"
+
+        if [ -n "$SB_OBFS" ]; then
+            printf '"obfs":{"type":"salamander","salamander":{"password":"%s"}},' "$SB_OBFS" >> "$P2P_DIR/sb-config.json"
+        fi
+
+        printf '"realm":{"server_url":"%s","token":"public","realm_id":"%s","stun_servers":["turn.cloudflare.com:3478"]},"tls":{"enabled":true,"certificate_path":"%s","key_path":"%s","alpn":["h3"]}}],"outbounds":[{"type":"direct","tag":"direct"}]}' \
+            "$SB_RV" "$SB_NAME" "$P2P_DIR/cert.pem" "$P2P_DIR/key.pem" >> "$P2P_DIR/sb-config.json"
+
+        # 4) 生成 sing-box 客户端示例配置（极简版 SOCKS5 + HTTP）
+        > "$P2P_DIR/sb-client.json"
+        printf '{"log":{"level":"info","timestamp":true},"inbounds":[{"type":"socks","tag":"socks-in","listen":"127.0.0.1","listen_port":1080},{"type":"http","tag":"http-in","listen":"127.0.0.1","listen_port":8080}],"outbounds":[{"type":"hysteria2","tag":"p2p-out","password":"%s","tls":{"enabled":true,"server_name":"cloudflare.com","insecure":true,"alpn":["h3"]},"realm":{"server_url":"%s","token":"public","realm_id":"%s","stun_servers":["turn.cloudflare.com:3478"]}}]}' \
+            "$SB_AUTH" "$SB_RV" "$SB_NAME" >> "$P2P_DIR/sb-client.json"
+
+        # 5) 进程伪装: 复制二进制
+        cp -f /usr/local/bin/sing-box "/usr/local/bin/$SB_PROC"
+
+        # 6) 渲染 supervisord 片段
+        sed -e "s/{SB_PROC}/$SB_PROC/g" -e "s#{P2P_DIR}#$P2P_DIR#g" \
+            /usr/local/etc/fragments/sb.conf > "$SYS_CONF_DIR/$SB_PROC.conf"
+
+        [ "$USER_NAME" != "root" ] && chown -R "$USER_NAME":"$USER_NAME" "$P2P_DIR"
+
+        echo "========================================"
+        echo " SBP2P server ready  (mode: $SB_MODE, proc: $SB_PROC)"
+        [ "$SB_MODE" = "public" ] && echo " Realm name : $SB_NAME"
+        echo " Server URL : $SB_RV"
+        echo " pinSHA256  : $SB_PIN"
+        echo " Server cfg : cat $P2P_DIR/sb-config.json"
+        echo " Client cfg : cat $P2P_DIR/sb-client.json"
         echo "========================================"
     fi
     set -e

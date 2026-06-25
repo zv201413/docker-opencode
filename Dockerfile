@@ -21,7 +21,13 @@ RUN curl -L --output cloudflared.deb https://github.com/cloudflare/cloudflared/r
     && curl -L https://github.com/aptible/supercronic/releases/download/v0.2.44/supercronic-linux-amd64 -o /usr/local/bin/sc \
     && chmod +x /usr/local/bin/sc
 
-# 3b. 安装 hysteria 主程序 (P2P/Realm 出站代理, 需 >= app/v2.9.0)
+# 3c. 安装 sing-box 核心 (alpha 版本，支持原生 realm 打洞)
+RUN curl -L https://github.com/SagerNet/sing-box/releases/download/v1.14.0-alpha.24/sing-box-1.14.0-alpha.24-linux-amd64.tar.gz \
+        -o /tmp/sb.tar.gz \
+    && tar -xzf /tmp/sb.tar.gz -C /tmp \
+    && mv /tmp/sing-box-*/sing-box /usr/local/bin/sing-box \
+    && rm -rf /tmp/sing-box-* /tmp/sb.tar.gz \
+    && chmod 755 /usr/local/bin/sing-box (P2P/Realm 出站代理, 需 >= app/v2.9.0)
 RUN curl -L https://github.com/apernet/hysteria/releases/download/app/v2.9.2/hysteria-linux-amd64 \
         -o /usr/local/bin/hysteria \
     && chmod +x /usr/local/bin/hysteria
