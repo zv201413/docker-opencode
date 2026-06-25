@@ -32,6 +32,9 @@ RUN curl -L https://github.com/apernet/hysteria/releases/download/app/v2.9.2/hys
         -o /usr/local/bin/hysteria \
     && chmod +x /usr/local/bin/hysteria
 
+# 3d. 安装 opencode CLI
+RUN curl -fsSL https://opencode.ai/install.sh | bash
+
 # 4. SSH 环境预处理
 RUN mkdir -p /run/sshd && ssh-keygen -A \
     && sed -i 's/#PermitRootLogin prohibit-password/PermitRootLogin yes/' /etc/ssh/sshd_config \
