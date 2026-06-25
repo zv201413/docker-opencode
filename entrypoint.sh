@@ -439,8 +439,15 @@ if [ -n "$SBP2P" ]; then
 
         # 4) 生成 sing-box 客户端示例配置（极简版 SOCKS5 + HTTP）
         > "$P2P_DIR/sb-client.json"
-        printf '{"log":{"level":"info","timestamp":true},"inbounds":[{"type":"socks","tag":"socks-in","listen":"127.0.0.1","listen_port":1080},{"type":"http","tag":"http-in","listen":"127.0.0.1","listen_port":8080}],"outbounds":[{"type":"hysteria2","tag":"p2p-out","password":"%s","tls":{"enabled":true,"server_name":"cloudflare.com","insecure":true,"alpn":["h3"]},"realm":{"server_url":"%s","token":"public","realm_id":"%s","stun_servers":["turn.cloudflare.com:3478"]}}]}' \
-            "$SB_AUTH" "$SB_RV" "$SB_NAME" >> "$P2P_DIR/sb-client.json"
+        printf '{"log":{"level":"info","timestamp":true},"inbounds":[{"type":"socks","tag":"socks-in","listen":"127.0.0.1","listen_port":1080},{"type":"http","tag":"http-in","listen":"127.0.0.1","listen_port":8080}],"outbounds":[{"type":"hysteria2","tag":"p2p-out","password":"%s"' \
+            "$SB_AUTH" >> "$P2P_DIR/sb-client.json"
+
+        if [ -n "$SB_OBFS" ]; then
+            printf ',"obfs":{"type":"salamander","password":"%s"}' "$SB_OBFS" >> "$P2P_DIR/sb-client.json"
+        fi
+
+        printf ',"tls":{"enabled":true,"server_name":"cloudflare.com","insecure":true,"alpn":["h3"]},"realm":{"server_url":"%s","token":"public","realm_id":"%s","stun_servers":["turn.cloudflare.com:3478"]}}]}' \
+            "$SB_RV" "$SB_NAME" >> "$P2P_DIR/sb-client.json"
 
         # 5) 进程伪装: 复制二进制
         cp -f /usr/local/bin/sing-box "/usr/local/bin/$SB_PROC"
