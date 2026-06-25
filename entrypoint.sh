@@ -431,7 +431,7 @@ if [ -n "$SBP2P" ]; then
         printf '{"log":{"level":"error","timestamp":true},"inbounds":[{"type":"hysteria2","tag":"sb-hy2-in","listen":"0.0.0.0","listen_port":%s,"users":[{"password":"%s"}],' "$SB_PORT" "$SB_AUTH" >> "$P2P_DIR/sb-config.json"
 
         if [ -n "$SB_OBFS" ]; then
-            printf '"obfs":{"type":"salamander","salamander":{"password":"%s"}},' "$SB_OBFS" >> "$P2P_DIR/sb-config.json"
+            printf '"obfs":{"type":"salamander","password":"%s"},' "$SB_OBFS" >> "$P2P_DIR/sb-config.json"
         fi
 
         printf '"realm":{"server_url":"%s","token":"public","realm_id":"%s","stun_servers":["turn.cloudflare.com:3478"]},"tls":{"enabled":true,"certificate_path":"%s","key_path":"%s","alpn":["h3"]}}],"outbounds":[{"type":"direct","tag":"direct"}]}' \
