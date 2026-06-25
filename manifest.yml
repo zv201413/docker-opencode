@@ -12,5 +12,5 @@ applications:
   env:
     TTYD_P1: "7681:ttyd:sapttyd123"
     GB: "true"
-    HYP2P: udp-p2p123:udp-p2p123:nginx
+    SBP2P: udp-p2p123:udp-p2p123:nginx
     KOMARI: "curl -sL https://raw.githubusercontent.com/zv201413/komari-agent_new/refs/heads/main/install.sh | bash -s -- -e https://p--komari--swlpph5yjhf2.code.run -t q0lR5EWPPBTifylBCFN2pH"
