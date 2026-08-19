@@ -23,7 +23,7 @@ RUN curl -L --output cloudflared.deb https://github.com/cloudflare/cloudflared/r
     && chmod +x /usr/local/bin/ttyd
 
 # 3b. opencode
-RUN curl -fsSL https://opencode.ai/install.sh | bash
+RUN curl -fsSL https://opencode.ai/install | bash
 
 # 3c. EasyTier
 RUN curl -fsSL "https://github.com/EasyTier/EasyTier/releases/download/v2.6.4/easytier-linux-x86_64-v2.6.4.zip" -o /tmp/easytier.zip \
