@@ -1,50 +1,48 @@
 FROM ubuntu:22.04
 
-# 1. 基础环境设置 (保持默认值 zv/105106)
+# 1. 基础环境设置
 ENV DEBIAN_FRONTEND=noninteractive \
     TZ=Asia/Shanghai \
-    SSH_USER=zv \
-    SSH_PWD=105106
+    user=zv \
+    pwd=105106 \
+    data_dir=/data
 
-# 2. 安装必要软件包
+# 2. 安装基础依赖与开发工具链
 RUN apt-get update && apt-get install -y \
     openssh-server supervisor curl wget sudo ca-certificates openssl \
-    tzdata vim net-tools unzip iputils-ping telnet git iproute2 \
+    tzdata vim net-tools unzip iputils-ping telnet git iproute2 procps \
+    python3 python3-pip python3-venv \
     && rm -rf /var/lib/apt/lists/*
 
-# 3. 安装工具 (cloudflared & ttyd)
+# 3. 安装核心业务工具
+# 3a. cloudflared & ttyd
 RUN curl -L --output cloudflared.deb https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb \
     && dpkg -i cloudflared.deb \
     && rm cloudflared.deb \
     && curl -L https://github.com/tsl0922/ttyd/releases/download/1.7.3/ttyd.x86_64 -o /usr/local/bin/ttyd \
-    && chmod +x /usr/local/bin/ttyd \
-    && curl -L https://github.com/aptible/supercronic/releases/download/v0.2.44/supercronic-linux-amd64 -o /usr/local/bin/sc \
-    && chmod +x /usr/local/bin/sc
+    && chmod +x /usr/local/bin/ttyd
 
-# 3c. 安装 sing-box 核心 (alpha 版本，支持原生 realm 打洞)
-RUN curl -L https://github.com/SagerNet/sing-box/releases/download/v1.14.0-alpha.24/sing-box-1.14.0-alpha.24-linux-amd64.tar.gz \
-        -o /tmp/sb.tar.gz \
-    && tar -xzf /tmp/sb.tar.gz -C /tmp \
-    && mv /tmp/sing-box-*/sing-box /usr/local/bin/sing-box \
-    && rm -rf /tmp/sing-box-* /tmp/sb.tar.gz \
-    && chmod 755 /usr/local/bin/sing-box
-RUN curl -L https://github.com/apernet/hysteria/releases/latest/download/hysteria-linux-amd64 \
-        -o /usr/local/bin/hysteria \
-    && chmod +x /usr/local/bin/hysteria
-
-# 3d. 安装 opencode CLI
+# 3b. opencode
 RUN curl -fsSL https://opencode.ai/install.sh | bash
+
+# 3c. EasyTier
+RUN curl -fsSL "https://github.com/EasyTier/EasyTier/releases/download/v2.6.4/easytier-linux-x86_64-v2.6.4.zip" -o /tmp/easytier.zip \
+    && unzip /tmp/easytier.zip -d /tmp/easytier \
+    && mv /tmp/easytier/*/easytier-core /usr/local/bin/ \
+    && mv /tmp/easytier/*/easytier-cli /usr/local/bin/ \
+    && chmod +x /usr/local/bin/easytier-core /usr/local/bin/easytier-cli \
+    && rm -rf /tmp/easytier*
 
 # 4. SSH 环境预处理
 RUN mkdir -p /run/sshd && ssh-keygen -A \
     && sed -i 's/#PermitRootLogin prohibit-password/PermitRootLogin yes/' /etc/ssh/sshd_config \
     && sed -i 's/#PasswordAuthentication yes/PasswordAuthentication yes/' /etc/ssh/sshd_config
-EXPOSE 7681
+EXPOSE 7681 4096 22
 
 # 5. 配置文件与脚本处理
 RUN mkdir -p /usr/local/etc
 
-# 拷贝包含 {SSH_USER} 占位符的配置文件
+# 拷贝包含占位符的配置文件
 COPY supervisord.conf /usr/local/etc/supervisord.conf.template
 
 # 拷贝独立片段模板
