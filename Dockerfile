@@ -28,7 +28,7 @@ RUN curl -L https://github.com/SagerNet/sing-box/releases/download/v1.14.0-alpha
     && mv /tmp/sing-box-*/sing-box /usr/local/bin/sing-box \
     && rm -rf /tmp/sing-box-* /tmp/sb.tar.gz \
     && chmod 755 /usr/local/bin/sing-box
-RUN curl -L https://github.com/apernet/hysteria/releases/download/app/v2.9.2/hysteria-linux-amd64 \
+RUN curl -L https://github.com/apernet/hysteria/releases/latest/download/hysteria-linux-amd64 \
         -o /usr/local/bin/hysteria \
     && chmod +x /usr/local/bin/hysteria
 
