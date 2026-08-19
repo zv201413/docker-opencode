@@ -49,24 +49,24 @@ echo "$USER_NAME ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/init-users
 echo "💾 数据持久化目录: $DATA_DIR"
 mkdir -p "$DATA_DIR/workspace"
 mkdir -p "$DATA_DIR/.config/opencode"
+mkdir -p "$DATA_DIR/.local/share/opencode"
+mkdir -p "$DATA_DIR/.local/state/opencode"
 mkdir -p "$DATA_DIR/.ssh"
 
 # 修正权限
 chown -R "$USER_NAME":"$USER_NAME" "$DATA_DIR"
 
-# 建立软链接到用户家目录
-if [ "$USER_NAME" != "root" ]; then
-    ln -sfn "$DATA_DIR/workspace" "$USER_HOME/workspace"
-    mkdir -p "$USER_HOME/.config"
-    ln -sfn "$DATA_DIR/.config/opencode" "$USER_HOME/.config/opencode"
-    ln -sfn "$DATA_DIR/.ssh" "$USER_HOME/.ssh"
-    chown -R "$USER_NAME":"$USER_NAME" "$USER_HOME/workspace" "$USER_HOME/.config" "$USER_HOME/.ssh"
-else
-    ln -sfn "$DATA_DIR/workspace" "/root/workspace"
-    mkdir -p "/root/.config"
-    ln -sfn "$DATA_DIR/.config/opencode" "/root/.config/opencode"
-    ln -sfn "$DATA_DIR/.ssh" "/root/.ssh"
-fi
+# 建立软链接到用户家目录（root 身份下 USER_HOME 即 /root，两种身份共用同一套逻辑）
+# opencode 的数据分三处：.config 存配置，.local/share 存会话库(opencode.db)/凭据/tool-output，
+# .local/state 存模型选择与 prompt 历史。三处都要链，否则容器重建会丢掉全部 AI 会话。
+ln -sfn "$DATA_DIR/workspace" "$USER_HOME/workspace"
+mkdir -p "$USER_HOME/.config" "$USER_HOME/.local/share" "$USER_HOME/.local/state"
+ln -sfn "$DATA_DIR/.config/opencode" "$USER_HOME/.config/opencode"
+ln -sfn "$DATA_DIR/.local/share/opencode" "$USER_HOME/.local/share/opencode"
+ln -sfn "$DATA_DIR/.local/state/opencode" "$USER_HOME/.local/state/opencode"
+ln -sfn "$DATA_DIR/.ssh" "$USER_HOME/.ssh"
+chown -R "$USER_NAME":"$USER_NAME" \
+    "$USER_HOME/workspace" "$USER_HOME/.config" "$USER_HOME/.local" "$USER_HOME/.ssh"
 
 # ==========================================
 # 4. Supervisor 服务配置生成

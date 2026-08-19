@@ -25,7 +25,7 @@ docker run -d --name opencode-box \
   -e data_dir="/data" \
   -v /opt/opencode_data:/data \
   -p 4096:4096 -p 7681:7681 -p 2222:22 \
-  ghcr.io/zv201413/zvps:latest
+  ghcr.io/zv201413/docker-opencode:latest
 ```
 * **OpenCode Web UI**: `http://<host>:4096`
 * **Web 终端**: `http://<host>:7681`
@@ -43,7 +43,7 @@ docker run -d --name opencode-mesh \
   -e api_key="sk-xxxxxx" \
   -v /opt/opencode_data:/data \
   --restart unless-stopped \
-  ghcr.io/zv201413/zvps:latest
+  ghcr.io/zv201413/docker-opencode:latest
 ```
 部署后，在你的本地电脑（Mac/Windows）同样安装并启动 EasyTier：
 `easytier-core -n my-opencode-mesh -s my-mesh-pass`
@@ -94,7 +94,9 @@ docker run -d --name opencode-mesh \
 传统的容器由于用户不同，主目录也会变动，导致文件难以长期保存。现在采用动态挂载逻辑：
 只要您将外部卷挂载给 `data_dir` 指定的路径（默认 `/data`），内部将自动接管：
 - `workspace/`：您的开发代码存放处。
-- `.config/opencode/`：OpenCode 的配置和本地会话缓存。
+- `.config/opencode/`：OpenCode 的配置文件（`opencode.jsonc`、插件）。
+- `.local/share/opencode/`：会话数据库（`opencode.db`）、API 凭据与工具输出。
+- `.local/state/opencode/`：当前选用的模型与 prompt 历史。
 - `.ssh/`：SSH 公钥认证信息。
 
 即使容器重建，您的所有开发进度和 AI 历史记录都会安然无恙！

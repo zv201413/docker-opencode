@@ -13,7 +13,7 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       # 1. 自动生成版本号
       - name: Set Image Tag
@@ -23,21 +23,23 @@ jobs:
           echo "tag=$(date +'%Y%m%d')-${GITHUB_SHA::7}" >> $GITHUB_OUTPUT
 
       - name: Log in to GHCR
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and push Docker image
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v7
         with:
           context: .
           push: true
           # 动态标签：同时推送到最新版和具体的版本号
+          # 包名必须与本仓库同名，GITHUB_TOKEN 才有写权限；
+          # 旧仓库 zvps-super 的 ghcr.io/<owner>/zvps 独立存在，不要复用
           tags: |
-            ghcr.io/${{ github.repository_owner }}/zvps:latest
-            ghcr.io/${{ github.repository_owner }}/zvps:${{ steps.vars.outputs.tag }}
+            ghcr.io/${{ github.repository_owner }}/docker-opencode:latest
+            ghcr.io/${{ github.repository_owner }}/docker-opencode:${{ steps.vars.outputs.tag }}
 
       # 2. 在控制台打印出来，方便复制版本号
       - name: Image info
