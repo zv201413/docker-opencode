@@ -1,0 +1,14 @@
+{
+  "name": "docker-opencode-telegram",
+  "version": "3.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Telegram control surface hosted inside OpenCode's native plugin runtime",
+  "scripts": {
+    "test": "node --test tests/*.test.mjs",
+    "install:telegram": "node scripts/install-telegram.mjs"
+  },
+  "dependencies": {
+    "@opencode-ai/sdk": "1.19.5"
+  }
+}

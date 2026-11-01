@@ -1,0 +1,24 @@
+name: Test native Telegram plugin
+on:
+  pull_request:
+  workflow_call:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: bash -n entrypoint.sh scripts/start-opencode.sh
+      - run: python3 -m py_compile scripts/install-telegram.py
+      - name: Install tested OpenCode version
+        run: curl -fsSL https://opencode.ai/install | bash -s -- --version 1.18.3 --no-modify-path
+      - name: Verify native plugin with real OpenCode
+        run: |
+          export PATH="$HOME/.opencode/bin:$PATH"
+          node tests/native-smoke.mjs

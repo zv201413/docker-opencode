@@ -1,3 +1,5 @@
+FROM node:22-bookworm-slim AS node-runtime
+
 FROM ubuntu:22.04
 
 # 1. 基础环境设置
@@ -11,8 +13,14 @@ ENV DEBIAN_FRONTEND=noninteractive \
 RUN apt-get update && apt-get install -y \
     openssh-server supervisor curl wget sudo ca-certificates openssl \
     tzdata vim net-tools unzip iputils-ping telnet git iproute2 procps \
-    python3 python3-pip python3-venv \
+    python3 python3-pip python3-venv build-essential pkg-config \
     && rm -rf /var/lib/apt/lists/*
+
+# Real Node.js/npm toolchain, also used by the native Telegram plugin dependencies.
+COPY --from=node-runtime /usr/local/bin/node /usr/local/bin/node
+COPY --from=node-runtime /usr/local/lib/node_modules /usr/local/lib/node_modules
+RUN ln -s /usr/local/lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm \
+    && ln -s /usr/local/lib/node_modules/npm/bin/npx-cli.js /usr/local/bin/npx
 
 # 3. 安装核心业务工具
 # 3a. cloudflared & ttyd
@@ -23,7 +31,8 @@ RUN curl -L --output cloudflared.deb https://github.com/cloudflare/cloudflared/r
     && chmod +x /usr/local/bin/ttyd
 
 # 3b. opencode
-RUN curl -fsSL https://opencode.ai/install | bash -s -- --no-modify-path \
+ARG OPENCODE_VERSION=1.18.3
+RUN curl -fsSL https://opencode.ai/install | bash -s -- --version "$OPENCODE_VERSION" --no-modify-path \
     && mv /root/.opencode/bin/opencode /usr/local/bin/opencode \
     && chmod +x /usr/local/bin/opencode
 
@@ -49,6 +58,13 @@ COPY supervisord.conf /usr/local/etc/supervisord.conf.template
 
 # 拷贝独立片段模板
 COPY fragments /usr/local/etc/fragments
+
+# Install the SDK once in the image; keep bot tokens and runtime state in env/volume.
+COPY package.json package-lock.json /opt/opencode-telegram/
+RUN npm ci --omit=dev --prefix /opt/opencode-telegram
+COPY telegram /opt/opencode-telegram/telegram
+COPY scripts/start-opencode.sh /usr/local/bin/start-opencode
+RUN chmod +x /usr/local/bin/start-opencode
 
 # 拷贝动态处理逻辑的启动脚本
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh

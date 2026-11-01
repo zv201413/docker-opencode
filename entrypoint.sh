@@ -14,6 +14,19 @@ OC_PORT=${oc_port:-${OPENCODE_PORT:-4096}}
 OC_MODEL=${oc_model:-${OPENCODE_MODEL:-}}
 OC_ARGS=${oc_args:-${OPENCODE_ARGS:-}}
 
+TG_TOKEN=${tg_token:-${TELEGRAM_BOT_TOKEN:-}}
+TG_USERS=${tg_users:-${TELEGRAM_USER_IDS:-}}
+if [ -n "$TG_TOKEN" ]; then
+    if [[ ! "$TG_USERS" =~ ^[0-9,[:space:]]+$ ]] || [[ ! "$TG_USERS" =~ [0-9] ]]; then
+        echo "Telegram requires tg_users / TELEGRAM_USER_IDS (numeric user IDs)." >&2
+        exit 1
+    fi
+    if [ "$OC_MODE" = "off" ]; then
+        echo "Telegram is an OpenCode plugin; oc_mode cannot be off when tg_token is set." >&2
+        exit 1
+    fi
+fi
+
 ET_NAME=${et_name:-${EASYTIER_NAME:-}}
 ET_SECRET=${et_secret:-${EASYTIER_SECRET:-}}
 ET_IP=${et_ip:-${EASYTIER_IP:-}}
@@ -67,6 +80,21 @@ ln -sfn "$DATA_DIR/.local/state/opencode" "$USER_HOME/.local/state/opencode"
 ln -sfn "$DATA_DIR/.ssh" "$USER_HOME/.ssh"
 chown -R "$USER_NAME":"$USER_NAME" \
     "$USER_HOME/workspace" "$USER_HOME/.config" "$USER_HOME/.local" "$USER_HOME/.ssh"
+
+# Native TG plugin: no second chat backend or model configuration. Installing
+# the wrapper is idempotent; existing opencode.json(c), plugins and auth are retained.
+if [ -n "$TG_TOKEN" ]; then
+    echo "🤖 启用 OpenCode 原生 Telegram 插件"
+    mkdir -p "$DATA_DIR/.config/opencode/plugins"
+    printf '%s\n' 'export { default } from "/opt/opencode-telegram/telegram/plugin.mjs";' \
+        > "$DATA_DIR/.config/opencode/plugins/docker-telegram.js"
+    export TELEGRAM_DIRECTORY="${tg_dir:-${TELEGRAM_DIRECTORY:-$DATA_DIR/workspace}}"
+    export TELEGRAM_STATE_DIR="${tg_state:-${TELEGRAM_STATE_DIR:-$DATA_DIR/.local/state/opencode/telegram}}"
+    chown -R "$USER_NAME":"$USER_NAME" "$DATA_DIR/.config/opencode/plugins"
+else
+    # This wrapper is managed by the image; user-installed plugins remain untouched.
+    rm -f "$DATA_DIR/.config/opencode/plugins/docker-telegram.js"
+fi
 
 # ==========================================
 # 4. Supervisor 服务配置生成

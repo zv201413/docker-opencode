@@ -1,0 +1,9 @@
+.git
+node_modules
+.env
+.env.*
+tests
+_Archive
+_Notebook
+__pycache__
+*.log

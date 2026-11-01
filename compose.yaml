@@ -1,0 +1,16 @@
+services:
+  opencode:
+    build: .
+    image: docker-opencode:local
+    env_file: .env
+    ports:
+      - "127.0.0.1:4096:4096"
+      - "127.0.0.1:7681:7681"
+      - "127.0.0.1:2222:22"
+    volumes:
+      - opencode-data:/data
+    restart: unless-stopped
+    stop_grace_period: 30s
+
+volumes:
+  opencode-data:

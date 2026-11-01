@@ -5,7 +5,11 @@ on:
     branches: [ "main" ]
 
 jobs:
+  verify:
+    uses: ./.github/workflows/test.yml
+
   build-and-push:
+    needs: verify
     runs-on: ubuntu-latest
     permissions:
       contents: read

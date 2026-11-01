@@ -1,5 +1,15 @@
 # Docker OpenCode & EasyTier Mesh 环境
 
+现已支持 **OpenCode 原生 Telegram 插件**：在 TG 里操作与 Web/TUI 共用的真实会话，接收工具执行进度、确认权限、回答追问、上传文件和取回产物。Docker、直接安装 OpenCode 的 Node.js/Python 云环境共用一份插件。完整部署和能力说明见 [Telegram 接入文档](docs/telegram.md)。
+
+```bash
+cp .env.example .env
+# 在 .env 填 tg_token、tg_users、pwd；按 OpenCode 原有方式配置模型供应商。
+docker compose up -d --build
+```
+
+这是进程内插件，复用 OpenCode 的 SDK、事件、会话数据库和模型配置。TG 只提供操作入口；工具、MCP、上下文压缩及自定义 Agent/命令由 OpenCode 执行。首次启动需要能访问 Telegram 和 OpenCode 的依赖源，之后长轮询只需要出站网络，无需 webhook 或公网入站端口。
+
 这是一个专注 **AI 辅助研发 (OpenCode)** 并内置 **EasyTier 无感异地组网** 的多功能 Docker 镜像。它可以轻松部署在任何支持 Docker 的云主机、NAS 甚至是免费的无公网 PaaS 平台（如 Railway、Render、Koyeb）上。
 
 通过极简的短小写环境变量配置，即可获得一个带代码工作区、Web 终端、SSH 访问、公网/内网穿透的完整云端开发机！
@@ -8,7 +18,7 @@
 
 ## 🚀 核心特性
 
-- **开箱即用的 AI IDE**：内置最新版 `OpenCode`，支持一键启动 Web 模式（直接在浏览器写代码）或 Serve 模式（通过本地 IDE attach）。
+- **开箱即用的 AI IDE**：内置经验证的 `OpenCode` 版本，支持一键启动 Web 模式（直接在浏览器写代码）或 Serve 模式（通过本地 IDE attach）。构建时可用 `OPENCODE_VERSION` 调整版本。
 - **EasyTier 异地 P2P 组网**：只要配置相同的网络名，无论容器跑在哪里（即使无公网 IP、无入站端口），都能与你的本地电脑组成一个虚拟局域网（例如 `10.144.144.x`），实现极低延迟直连。
 - **自定义数据持久化**：告别写死路径。通过 `data_dir` 变量随心定义数据落盘位置（包含代码库、配置、密钥等），并可直接映射到宿主机。
 - **丰富的内置工具链**：包含 Node.js、Python3、Git、cURL 以及一整套系统基础运维与编译工具。
@@ -86,6 +96,19 @@ docker run -d --name opencode-mesh \
 | `ttyd_port`| `7681` | Web 终端端口，设为 `0` 或 `off` 可关闭 |
 | `ttyd_auth`| （空） | Web 终端账号密码保护（格式：`admin:password`） |
 | `cf_token` | （关） | Cloudflare Tunnel Token，填入后将通过 CF 代理对外暴露服务 |
+
+### 5. Telegram
+
+| 变量 | 默认值 | 说明 |
+| :--- | :--- | :--- |
+| `tg_token` | （关） | BotFather token；也支持 `TELEGRAM_BOT_TOKEN` |
+| `tg_users` | （必填） | 允许操作的数字用户 ID，逗号分隔；`TELEGRAM_USER_IDS` |
+| `tg_chats` | （空） | 群组必须显式加入的聊天 ID；`TELEGRAM_CHAT_IDS` |
+| `tg_dir` | 容器代码工作区 | Bot 控制的工作目录；`TELEGRAM_DIRECTORY` |
+| `tg_state` | 持久化 state 内的 `telegram/` | 会话映射、更新游标和按钮状态；`TELEGRAM_STATE_DIR` |
+| `tg_max_mb` | `20` | 文件收发上限，最大 `50`；官方 Bot API 下载上限通常为 20 MB |
+| `tg_interval` | `1500` | 流式消息刷新间隔，毫秒，最小 `1000` |
+| `tg_api` | `https://api.telegram.org` | 可改为自托管 Telegram Bot API 地址 |
 
 ---
 
